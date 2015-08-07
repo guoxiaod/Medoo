@@ -248,7 +248,7 @@ class medoo
 			}
 			else
 			{
-				preg_match('/(#?)([\w\.]+)(\[(\>|\>\=|\<|\<\=|\!|\<\>|\>\<|\!?~)\])?/i', $key, $match);
+				preg_match('/(#?)([\w\.]+)(\[(\>|\>\=|\<|\<\=|\!|\<\>|\>\<|\!?~|\||\&)\])?/i', $key, $match);
 				$column = $this->column_quote($match[2]);
 
 				if (isset($match[4]))
@@ -341,6 +341,15 @@ class medoo
 									$wheres[] = $column . ' ' . $operator . ' ' . $this->fn_quote($key, $value);
 								}
 							}
+						}
+					}
+
+					if ($operator == '|' || $operator == '&')
+					{
+						if (is_numeric($value))
+						{
+							$value = (int) $value;
+							$wheres[] = "$column $operator $value = $value";
 						}
 					}
 				}
