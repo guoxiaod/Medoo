@@ -579,17 +579,17 @@ class MysqlMedoo extends Medoo
 
 			$map_key = $this->mapKey();
 
-			if (
+            if (is_int($key) && $type === 'object')
+            {
+                $stack[] = $this->buildRaw($value, $map);
+            }
+			else if (
 				is_int($key) &&
 				preg_match('/([a-zA-Z0-9_\.]+)\[(?<operator>\>\=?|\<\=?|\!?\=)\]([a-zA-Z0-9_\.]+)/i', $value, $match)
 			)
 			{
 				$stack[] = $this->columnQuote($match[ 1 ]) . ' ' . $match[ 'operator' ] . ' ' . $this->columnQuote($match[ 3 ]);
 			}
-            else if (is_int($key) && $type === 'object')
-            {
-                $stack[] = $this->buildRaw($value, $map);
-            }
 			else
 			{
 				preg_match('/([a-zA-Z0-9_\.]+)(\[(?<operator>\>\=?|\<\=?|\!|\<\>|\>\<|\!?~|REGEXP)\])?/i', $key, $match);
