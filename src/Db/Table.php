@@ -218,7 +218,6 @@ class Table
             $shardKey = count($args) === $count ? array_pop($args) : null;
             $connect = $this->lastConnection ?? $this->connect($shardKey, $isWriter);
             $results = call_user_func_array([$connect, $method], $args);
-            $this->log2somewhere();
             return $results;
         }
 
