@@ -29,6 +29,15 @@ class Table
         $this->instance = Database::getInstance($this->database);
     }
 
+    /**
+     * 子类实现该方法,将sql日志打印到别处.
+     * log2somewhere将在sql执行后(成功后)触发
+     */
+    public function log2somewhere()
+    {
+        //TODO implement this method in child class
+    }
+
     public function find($id, $where = [], $shardKey = null, $isWriter = null)
     {
         $id = is_array($id) ? $id : [$id]; 
@@ -38,12 +47,16 @@ class Table
         $where += [
             'AND' => isset($id[0]) ? array_combine($this->primary, $id) : $id,
         ];
-        return $this->get('*', $where);
+        $results =  $this->get('*', $where);
+        $this->log2somewhere();
+        return $results;
     }
 
     public function findForUpdate($id, $shardKey = null, $isWriter = true)
     {
-        return $this->find($id, ['LOCK' => 'UPDATE'], $shardKey); 
+        $results = $this->find($id, ['LOCK' => 'UPDATE'], $shardKey);
+        $this->log2somewhere();
+        return $results;
     }
 
     public function getTable($shardKey = null)
@@ -62,7 +75,9 @@ class Table
         if ($isWriter === null) {
             $isWriter = strncasecmp(ltrim($query), 'select', 6) !== 0;
         }
-        return $this->connect($shardKey, $isWriter)->query($query, $map); 
+        $results = $this->connect($shardKey, $isWriter)->query($query, $map);
+        $this->log2somewhere();
+        return $results;
     }
 
     public function exec($query, $map = [], $shardKey = null, $isWriter = null)
@@ -70,12 +85,16 @@ class Table
         if ($isWriter === null) {
             $isWriter = strncasecmp(ltrim($query), 'select', 6) !== 0;
         }
-        return $this->connect($shardKey, $isWriter)->exec($query, $map); 
+        $results = $this->connect($shardKey, $isWriter)->exec($query, $map);
+        $this->log2somewhere();
+        return $results;
     }
 
     public function quote($string, $shardKey = null, $isWriter = null)
     {
-        return $this->connect($shardKey, $isWriter)->quote($string);
+        $results = $this->connect($shardKey, $isWriter)->quote($string);
+        $this->log2somewhere();
+        return $results;
     }
 
     public function action($actions, $shardKey = null, $isWriter = true)
@@ -101,6 +120,7 @@ class Table
     public function insertEx($data, $shardKey = null)
     {
         $result = $this->connect($shardKey, $isWriter = true)->insert($data);
+        $this->log2somewhere();
         if (isset($data[0])) {
             $id = $this->id($shardKey); 
             // TODO if the data is multiple records, the result is undefined
@@ -123,7 +143,7 @@ class Table
     }
 
     /**
-     * @return MysqlMedoo.pdo
+     * @return \Medoo\MysqlMedoo.pdo
      */
     public function getPdo()
     {
@@ -156,7 +176,9 @@ class Table
             $shardKey = count($args) === $count ? array_pop($args) : null;
             $connect = $this->connect($shardKey, $isWriter);
             array_unshift($args, $this->getTable($shardKey));
-            return call_user_func_array([$connect, $method], $args);
+            $results = call_user_func_array([$connect, $method], $args);
+            $this->log2somewhere();
+            return $results;
         }
 
         $tableWriterMethods = [
@@ -174,7 +196,9 @@ class Table
             $shardKey = count($args) === $count ? array_pop($args) : null;
             $connect = $this->connect($shardKey, $isWriter);
             array_unshift($args, $this->getTable($shardKey));
-            return call_user_func_array([$connect, $method], $args);
+            $results = call_user_func_array([$connect, $method], $args);
+            $this->log2somewhere();
+            return $results;
         }
 
         $normalMethods = [
@@ -193,7 +217,9 @@ class Table
             }
             $shardKey = count($args) === $count ? array_pop($args) : null;
             $connect = $this->lastConnection ?? $this->connect($shardKey, $isWriter);
-            return call_user_func_array([$connect, $method], $args);
+            $results = call_user_func_array([$connect, $method], $args);
+            $this->log2somewhere();
+            return $results;
         }
 
         throw new \BadMethodCallException("Not implement method " . static::class . "::$method()");

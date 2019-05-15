@@ -38,7 +38,7 @@ class MysqlMedoo extends Medoo
             $this->prefix = $options['prefix'];
         }
         if (isset($options['logging']) && is_bool($options['logging'])) {
-            $this->logging = $optins['logging'];
+            $this->logging = $options['logging'];
         }
 
         $option = isset($options[ 'option' ]) ? (array) $options[ 'option' ] : [];
