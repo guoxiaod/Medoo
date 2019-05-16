@@ -48,14 +48,12 @@ class Table
             'AND' => isset($id[0]) ? array_combine($this->primary, $id) : $id,
         ];
         $results =  $this->get('*', $where);
-        $this->log2somewhere();
         return $results;
     }
 
     public function findForUpdate($id, $shardKey = null, $isWriter = true)
     {
         $results = $this->find($id, ['LOCK' => 'UPDATE'], $shardKey);
-        $this->log2somewhere();
         return $results;
     }
 
