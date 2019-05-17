@@ -2,6 +2,13 @@
 
 namespace Medoo\Db;
 
+/**
+ * @method update($data, $where = null)
+ * @method insert($datas, $shardKey = null)
+ * @method get($join = null, $columns = null, $where = null)
+ * @method last()
+ * @method log()
+ */
 class Table
 {
     protected $database;
@@ -17,7 +24,7 @@ class Table
         $this->database = $database ?? $this->database;
         $this->primary = $primary ?? $this->primary;
         if ($this->database == null || $this->table == null) {
-            throw new \Exception("Please first set database and table for " . static::class); 
+            throw new \Exception("Please first set database and table for " . static::class);
         }
         if ($this->primary == null) {
             // throw new \Exception("Please first set primary key for " . static::class); 
@@ -40,7 +47,7 @@ class Table
 
     public function find($id, $where = [], $shardKey = null, $isWriter = null)
     {
-        $id = is_array($id) ? $id : [$id]; 
+        $id = is_array($id) ? $id : [$id];
         if (count($id) != count($this->primary)) {
             throw new \Exception("id count is not same as primary key count");
         }
@@ -109,7 +116,7 @@ class Table
     {
         return $this->connect($shardKey, $isWriter = true)->commit();
     }
-    
+
     public function rollback($shardKey = null)
     {
         return $this->connect($shardKey, $isWriter = true)->rollback();
@@ -120,12 +127,12 @@ class Table
         $result = $this->connect($shardKey, $isWriter = true)->insert($data);
         $this->log2somewhere();
         if (isset($data[0])) {
-            $id = $this->id($shardKey); 
+            $id = $this->id($shardKey);
             // TODO if the data is multiple records, the result is undefined
             return $id;
         } else {
             if (count($this->primary) == 1) {
-                $primary = $this->primary[0]; 
+                $primary = $this->primary[0];
                 if (isset($data[$primary])) {
                     return $data[$primary];
                 }
@@ -151,7 +158,7 @@ class Table
 
         return $this->lastConnection->getPdo();
     }
-    
+
     public function __call($method, $args)
     {
         $tableMethods = [
@@ -169,7 +176,7 @@ class Table
             $count = $tableMethods[$method];
             $isWriter = false;
             if (count($args) === $count + 1) {
-                $isWriter = array_pop($args); 
+                $isWriter = array_pop($args);
             }
             $shardKey = count($args) === $count ? array_pop($args) : null;
             $connect = $this->connect($shardKey, $isWriter);
