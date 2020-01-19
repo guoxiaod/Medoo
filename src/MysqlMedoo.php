@@ -185,7 +185,7 @@ class MysqlMedoo extends Medoo
         return false;
     }
 
-    protected function columnPush(&$columns, &$map)
+    protected function columnPush(&$columns, &$map, $root, $is_join = false)
     {
         if ($columns === '*')
         {
@@ -202,9 +202,15 @@ class MysqlMedoo extends Medoo
 
         foreach ($columns as $key => $value)
         {
-            if (is_array($value))
+			if (!is_int($key) && is_array($value) && $root && count(array_keys($columns)) === 1)
+			{
+				$stack[] = $this->columnQuote($key);
+
+				$stack[] = $this->columnPush($value, $map, false, $is_join);
+			}
+            elseif (is_array($value))
             {
-                $stack[] = $this->columnPush($value, $map);
+                $stack[] = $this->columnPush($value, $map, false, $is_join);
             }
             elseif (!is_int($key) && $raw = $this->buildRaw($value, $map))
             {
@@ -254,7 +260,7 @@ class MysqlMedoo extends Medoo
         return implode($modifiers, ' ') . ' ' . implode($stack, ',');
     }
 
-    protected function columnMap($columns, &$stack)
+    protected function columnMap($columns, &$stack, $root)
     {
         if ($columns === '*')
         {
@@ -297,7 +303,7 @@ class MysqlMedoo extends Medoo
             }
             elseif (!is_int($key) && is_array($value))
             {
-                $this->columnMap($value, $stack);
+                $this->columnMap($value, $stack, false);
             }
         }
 
@@ -307,7 +313,7 @@ class MysqlMedoo extends Medoo
     public function select($table, $join, $columns = null, $where = null)
     {
         $map = [];
-        $stack = [];
+        $result = [];
         $column_map = [];
 
         $index = 0;
@@ -318,7 +324,9 @@ class MysqlMedoo extends Medoo
 
         $query = $this->exec($this->selectContext($table, $map, $join, $columns, $where), $map);
 
-        if (!$query)
+		$this->columnMap($columns, $column_map, true);
+
+        if (!$this->statement)
         {
             return false;
         }
@@ -328,70 +336,74 @@ class MysqlMedoo extends Medoo
             return $query->fetchAll(PDO::FETCH_ASSOC);
         }
 
+		while ($data = $query->fetch(PDO::FETCH_ASSOC))
+		{
+			$current_stack = [];
+
+			$this->dataMap($data, $columns, $column_map, $current_stack, true, $result);
+		}
+
         if ($is_single)
         {
-            return $query->fetchAll(PDO::FETCH_COLUMN);
+			$single_result = [];
+			$result_key = $column_map[ $column ][ 0 ];
+
+			foreach ($result as $item)
+			{
+				$single_result[] = $item[ $result_key ];
+			}
+
+			return $single_result;
         }
 
-        $this->columnMap($columns, $column_map);
-
-        while ($data = $query->fetch(PDO::FETCH_ASSOC))
-        {
-            $current_stack = [];
-
-            $this->dataMap($data, $columns, $column_map, $current_stack);
-
-            $stack[ $index ] = $current_stack;
-
-            $index++;
-        }
-
-        return $stack;
+        return $result;
     }
 
     public function get($table, $join = null, $columns = null, $where = null)
     {
         $map = [];
-        $stack = [];
+        $result = [];
         $column_map = [];
+		$current_stack = [];
 
         if ($where === null)
         {
             $column = $join;
-            $columns['LIMIT'] = [0, 1];
+			unset($columns[ 'LIMIT' ]);
         }
         else
         {
             $column = $columns;
-            $where['LIMIT'] = [0, 1];
+			unset($where[ 'LIMIT' ]);
         }
 
         $is_single = (is_string($column) && $column !== '*' && $column[-1] !== '*');
 
         $query = $this->exec($this->selectContext($table, $map, $join, $columns, $where), $map);
 
-        if ($query)
+        if (!$this->statement) {
+            return false;
+        }
+
+        $data = $query->fetchAll(PDO::FETCH_ASSOC);
+
+        if (isset($data[ 0 ]))
         {
-            $data = $query->fetchAll(PDO::FETCH_ASSOC);
-
-            if (isset($data[ 0 ]))
+            if ($column === '*' || $this->hasStar($column))
             {
-                if ($column === '*' || $this->hasStar($column))
-                {
-                    return $data[ 0 ];
-                }
-
-                $this->columnMap($columns, $column_map);
-
-                $this->dataMap($data[ 0 ], $columns, $column_map, $stack);
-
-                if ($is_single)
-                {
-                    return $stack[ $column_map[ $column ][ 0 ] ];
-                }
-
-                return $stack;
+                return $data[ 0 ];
             }
+
+            $this->columnMap($columns, $column_map, true);
+
+            $this->dataMap($data[ 0 ], $columns, $column_map, $stack, true, $result);
+
+            if ($is_single)
+            {
+                return $result[0][ $column_map[ $column ][ 0 ] ];
+            }
+
+            return $result[0];
         }
     }
 
@@ -419,67 +431,8 @@ class MysqlMedoo extends Medoo
 			strpos($join_key[ 0 ], '[') === 0
 		)
 		{
-			$table_join = [];
-
-			$join_array = [
-				'>' => 'LEFT',
-				'<' => 'RIGHT',
-				'<>' => 'FULL',
-				'><' => 'INNER'
-			];
-
-			foreach($join as $sub_table => $relation)
-			{
-				preg_match('/(\[(?<join>\<\>?|\>\<?)\])?(?<table>[a-zA-Z0-9_]+)\s?(\((?<alias>[a-zA-Z0-9_]+)\))?/', $sub_table, $match);
-
-				if ($match[ 'join' ] !== '' && $match[ 'table' ] !== '')
-				{
-					if (is_string($relation))
-					{
-						$relation = 'USING (' . $this->columnQuote($relation) . ')';
-					}
-
-					if (is_array($relation))
-					{
-						// For ['column1', 'column2']
-						if (isset($relation[ 0 ]))
-						{
-							$relation = 'USING (`' . implode($relation, '`, `') . '`)';
-						}
-						else
-						{
-							$joins = [];
-
-							foreach ($relation as $key => $value)
-							{
-								$joins[] = (
-									strpos($key, '.') > 0 ?
-										// For ['tableB.column' => 'column']
-										$this->columnQuote($key) :
-
-										// For ['column1' => 'column2']
-										$table . '.' . $this->columnQuote($key)
-								) .
-								' = ' .
-								$this->tableQuote(isset($match[ 'alias' ]) ? $match[ 'alias' ] : $match[ 'table' ]) . '.' . $this->columnQuote($value);
-							}
-
-							$relation = 'ON ' . implode($joins, ' AND ');
-						}
-					}
-
-					$table_name = $this->tableQuote($match[ 'table' ]) . ' ';
-
-					if (isset($match[ 'alias' ]))
-					{
-						$table_name .= 'AS ' . $this->tableQuote($match[ 'alias' ]) . ' ';
-					}
-
-					$table_join[] = $join_array[ $match[ 'join' ] ] . ' JOIN ' . $table_name . $relation;
-				}
-			}
-
-			$table_query .= ' ' . implode($table_join, ' ');
+			$is_join = true;
+			$table_query .= ' ' . $this->buildJoin($table, $join);
 		}
 		else
 		{
@@ -529,12 +482,12 @@ class MysqlMedoo extends Medoo
 					$where = $join;
 				}
 
-				$column = $column_fn . '(' . $this->columnPush($columns, $map) . ')';
+				$column = $column_fn . '(' . $this->columnPush($columns, $map, true) . ')';
 			}
 		}
 		else
 		{
-			$column = $this->columnPush($columns, $map);
+			$column = $this->columnPush($columns, $map, true, $is_join);
 		}
 
 		return 'SELECT ' . $column . ' FROM ' . $table_query . $this->whereClause($where, $map);
@@ -606,7 +559,7 @@ class MysqlMedoo extends Medoo
 						if (is_numeric($value))
 						{
 							$condition .= $map_key;
-							$map[ $map_key ] = [$value, PDO::PARAM_INT];
+							$map[ $map_key ] = [$value, is_float($value) ? PDO::PARAM_STR : PDO::PARAM_INT];
 						}
 						elseif ($raw = $this->buildRaw($value, $map))
 						{
@@ -633,8 +586,10 @@ class MysqlMedoo extends Medoo
 
 								foreach ($value as $index => $item)
 								{
-									$placeholders[] = $map_key . $index . '_i';
-									$map[ $map_key . $index . '_i' ] = $this->typeMap($item, gettype($item));
+									$stack_key = $map_key . $index . '_i';
+
+									$placeholders[] = $stack_key;
+									$map[ $stack_key ] = $this->typeMap($item, gettype($item));
 								}
 
 								$stack[] = $column . ' NOT IN (' . implode(', ', $placeholders) . ')';
@@ -681,7 +636,7 @@ class MysqlMedoo extends Medoo
 						{
 							$item = strval($item);
 
-							if (!preg_match('/(\[.+\]|_|%.+|.+%)/', $item))
+							if (!preg_match('/(\[.+\]|[\*\?\!\%#^-_]|%.+|.+%)/', $item))
 							{
 								$item = '%' . $item . '%';
 							}
@@ -728,8 +683,10 @@ class MysqlMedoo extends Medoo
 
 							foreach ($value as $index => $item)
 							{
-								$placeholders[] = $map_key . $index . '_i';
-								$map[ $map_key . $index . '_i' ] = $this->typeMap($item, gettype($item));
+								$stack_key = $map_key . $index . '_i';
+
+								$placeholders[] = $stack_key;
+								$map[ $stack_key ] = $this->typeMap($item, gettype($item));
 							}
 
 							$stack[] = $column . ' IN (' . implode(', ', $placeholders) . ')';
