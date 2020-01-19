@@ -424,6 +424,7 @@ class MysqlMedoo extends Medoo
 			$table_query = $table;
 		}
 
+        $is_join = false;
 		$join_key = is_array($join) ? array_keys($join) : null;
 
 		if (
