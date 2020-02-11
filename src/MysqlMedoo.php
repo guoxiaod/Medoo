@@ -413,6 +413,7 @@ class MysqlMedoo extends Medoo
 
 		if (isset($table_match[ 'table' ], $table_match[ 'alias' ]))
 		{
+            $alias = $this->tableQuote($table_match[ 'alias' ]);
 			$table = $this->tableQuote($table_match[ 'table' ]);
 
 			$table_query = $table . ' AS ' . $this->tableQuote($table_match[ 'alias' ]);
@@ -420,6 +421,7 @@ class MysqlMedoo extends Medoo
 		else
 		{
 			$table = $this->tableQuote($table);
+            $alias = $table;
 
 			$table_query = $table;
 		}
@@ -433,7 +435,7 @@ class MysqlMedoo extends Medoo
 		)
 		{
 			$is_join = true;
-			$table_query .= ' ' . $this->buildJoin($table, $join);
+			$table_query .= ' ' . $this->buildJoin($alias, $join);
 		}
 		else
 		{
