@@ -494,6 +494,71 @@ class MysqlMedoo extends Medoo
 		return 'SELECT ' . $column . ' FROM ' . $table_query . $this->whereClause($where, $map);
 	}
 
+	protected function buildJoin($table, $join)
+	{
+		$table_join = [];
+
+		$join_array = [
+			'>' => 'LEFT',
+			'<' => 'RIGHT',
+			'<>' => 'FULL',
+			'><' => 'INNER'
+		];
+
+		foreach($join as $sub_table => $relation)
+		{
+			preg_match('/(\[(?<join>\<\>?|\>\<?)\])?(?<table>[a-zA-Z0-9_]+)\s?(\((?<alias>[a-zA-Z0-9_]+)\))?/', $sub_table, $match);
+
+			if ($match[ 'join' ] !== '' && $match[ 'table' ] !== '')
+			{
+				if (is_string($relation))
+				{
+					$relation = 'USING (`' . $relation . '`)';
+				}
+
+				if (is_array($relation))
+				{
+					// For ['column1', 'column2']
+					if (isset($relation[ 0 ]))
+					{
+						$relation = 'USING (`' . implode('`, `', $relation) . '`)';
+					}
+					else
+					{
+						$joins = [];
+
+						foreach ($relation as $key => $value)
+						{
+							$joins[] = (
+								strpos($key, '.') > 0 ?
+									// For ['tableB.column' => 'column']
+									$this->columnQuote($key) :
+
+									// For ['column1' => 'column2']
+									$table . '.`' . $key . '`'
+							) .
+							' = ' .
+							$this->tableQuote(isset($match[ 'alias' ]) ? $match[ 'alias' ] : $match[ 'table' ]) . '.`' . $value . '`';
+						}
+
+						$relation = 'ON ' . implode(' AND ', $joins);
+					}
+				}
+
+				$table_name = $this->tableQuote($match[ 'table' ]) . ' ';
+
+				if (isset($match[ 'alias' ]))
+				{
+					$table_name .= 'AS ' . $this->tableQuote($match[ 'alias' ]) . ' ';
+				}
+
+				$table_join[] = $join_array[ $match[ 'join' ] ] . ' JOIN ' . $table_name . $relation;
+			}
+		}
+
+		return implode(' ', $table_join);
+	}
+
     protected function whereClause($where, &$map)
     {
         $lockMode = '';
